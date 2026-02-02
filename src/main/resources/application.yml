@@ -1,0 +1,91 @@
+spring:
+  application:
+    name: folio
+  profiles:
+    active: local
+  # Session config
+  session:
+    store-type: redis
+    # Session expires in 30 days
+    timeout: 2592000
+  # MySQL datasource
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/folio
+    username: root
+    password: 123456
+  # Redis
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      password:
+mybatis-flex:
+  configuration:
+    map-underscore-to-camel-case: false
+server:
+  port: 8567
+  servlet:
+    context-path: /api
+    # Cookie expires in 30 days
+    session:
+      cookie:
+        max-age: 2592000
+# springdoc-openapi config
+springdoc:
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.zxuhan.template.controller
+# Knife4j API docs config
+knife4j:
+  enable: true
+
+# Pexels API config
+pexels:
+  api-key: ${PEXELS_API_KEY:xxx}
+# Nano Banana (Gemini native image generation) config
+nano-banana:
+  api-key: xxx  # Override in application-local.yml; same key as spring.ai.openai.api-key
+  model: gemini-2.5-flash-image  # Free tier; gemini-3-pro-image-preview is higher quality but paywalled
+  aspect-ratio: "16:9"  # Optional; supports 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
+  image-size: "1K"  # Optional (gemini-3-pro only); supports 1K, 2K, 4K
+  output-mime-type: image/png  # Optional; supports image/jpeg, image/png
+# Mermaid chart generation config
+mermaid:
+  cli-command: mmdc  # CLI command (on Windows, mmdc.cmd is used automatically)
+  background-color: transparent  # Background color
+  output-format: svg  # Output format (svg/png/pdf)
+  width: 1200  # Image width (pixels)
+  timeout: 30000  # Command timeout (milliseconds)
+
+# Iconify icon library config
+iconify:
+  api-url: https://api.iconify.design
+  search-limit: 10
+  default-height: 64
+  default-color: ""  # Leave empty to use currentColor, or set e.g. "#000000"
+
+# Meme-image search config
+emoji-pack:
+  search-url: https://www.bing.com/images/async
+  suffix: funny meme
+  timeout: 10000  # Request timeout (milliseconds)
+
+# SVG concept diagram config
+svg-diagram:
+  default-width: 800
+  default-height: 600
+  folder: svg-diagrams  # R2 storage folder
+
+# Article agent config
+article:
+  agent:
+    orchestrator:
+      # Whether to enable multi-agent orchestration (supports parallel image generation)
+      # true: use Spring AI Alibaba multi-agent orchestration
+      # false: use the legacy ArticleAgentService
+      enabled: true
+    # Agent maximum iterations
+    max-iterations: 10

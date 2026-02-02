@@ -1,0 +1,184 @@
+# ========================================
+# Folio - Docker Compose
+# ========================================
+# Usage:
+#   1. Copy .env.example to .env and fill in API keys
+#   2. Run: docker compose up -d --build
+#   3. Visit: http://localhost
+# ========================================
+
+services:
+  # ============ MySQL database ============
+  mysql:
+    image: mysql:8.0
+    container_name: folio-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-folio}
+      TZ: ${TZ:-Europe/Amsterdam}
+    # MySQL is reachable via docker network only (other containers use hostname "mysql:3306").
+    # To allow a host-side process to connect (e.g. AI-code-platform JAR), uncomment below.
+    # NEVER bind to 0.0.0.0 in production — bots scan port 3306 across the entire internet.
+    # ports:
+    #   - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # SQL init scripts (executed in filename alphabetical order)
+      - ./sql/create_table.sql:/docker-entrypoint-initdb.d/01_create_table.sql:ro
+      - ./sql/update_quota.sql:/docker-entrypoint-initdb.d/02_update_quota.sql:ro
+      - ./sql/add_phase_fields.sql:/docker-entrypoint-initdb.d/03_add_phase_fields.sql:ro
+      - ./sql/add_article_style.sql:/docker-entrypoint-initdb.d/04_add_article_style.sql:ro
+      - ./sql/add_vip_payment.sql:/docker-entrypoint-initdb.d/05_add_vip_payment.sql:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --character-set-client-handshake=FALSE
+      - --init-connect=SET NAMES utf8mb4
+      - --default-authentication-plugin=mysql_native_password
+      - --max_connections=200
+      - --innodb_buffer_pool_size=128M
+
+  # ============ Redis cache ============
+  redis:
+    image: redis:7-alpine
+    container_name: folio-redis
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Amsterdam}
+    # Redis is reachable via docker network only (other containers use hostname "redis:6379").
+    # To allow a host-side process to connect, uncomment below.
+    # ports:
+    #   - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
+
+  # ============ Backend service ============
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    image: zxuhan7/folio-backend:latest
+    container_name: folio-backend
+    restart: unless-stopped
+    environment:
+      # Spring config
+      SPRING_PROFILES_ACTIVE: prod
+      TZ: ${TZ:-Europe/Amsterdam}
+
+      # Database config (hostname `mysql` is the docker-network alias for the mysql service)
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-folio}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Europe/Amsterdam&characterEncoding=utf8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+
+      # Redis config
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+
+      # AI config (required) — Google Gemini via OpenAI-compatible endpoint.
+      # Same key powers both the LLM agents and Nano Banana image gen.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Please set GEMINI_API_KEY in .env}
+      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL:-gemini-2.5-flash}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL:-gemini-2.5-flash-image}
+
+      # Pexels config (required)
+      PEXELS_API_KEY: ${PEXELS_API_KEY:?Please set PEXELS_API_KEY in .env}
+
+      # Stripe config (optional)
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL:-http://localhost/vip?success=true}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL:-http://localhost/vip?cancelled=true}
+
+      # Cloudflare R2 config (S3-compatible object storage)
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_BUCKET: ${R2_BUCKET:-storm-write}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+
+      # JVM config
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
+    ports:
+      - "${BACKEND_PORT:-8123}:8123"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ============ Frontend service ============
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    image: zxuhan7/folio-frontend:latest
+    container_name: folio-frontend
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Amsterdam}
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ============ Networks ============
+networks:
+  app-network:
+    driver: bridge
+    name: folio-network
+
+# ============ Volumes ============
+volumes:
+  mysql-data:
+    name: folio-mysql-data
+  redis-data:
+    name: folio-redis-data

@@ -1,0 +1,50 @@
+# ========================================
+# Production profile (used inside Docker).
+# Activated by --spring.profiles.active=prod (set in Dockerfile + compose).
+# All connection details are supplied by docker-compose's environment block,
+# which in turn reads .env. No fallbacks here — fail fast if a required var
+# wasn't injected by compose.
+# ========================================
+
+server:
+  port: 8123
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT}
+      database: 0
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+  ai:
+    openai:
+      api-key: ${GEMINI_API_KEY}
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
+      chat:
+        options:
+          model: ${GEMINI_TEXT_MODEL:gemini-2.5-flash}
+
+pexels:
+  api-key: ${PEXELS_API_KEY}
+
+nano-banana:
+  api-key: ${GEMINI_API_KEY}
+  model: ${GEMINI_IMAGE_MODEL:gemini-2.5-flash-image}
+
+stripe:
+  api-key: ${STRIPE_API_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  success-url: ${STRIPE_SUCCESS_URL:http://localhost/vip?success=true}
+  cancel-url: ${STRIPE_CANCEL_URL:http://localhost/vip?cancelled=true}
+
+r2:
+  access-key-id: ${R2_ACCESS_KEY_ID:}
+  secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+  account-id: ${R2_ACCOUNT_ID:}
+  bucket: ${R2_BUCKET:storm-write}
+  public-url: ${R2_PUBLIC_URL:}

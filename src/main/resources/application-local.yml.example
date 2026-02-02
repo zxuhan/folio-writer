@@ -1,0 +1,78 @@
+# ========================================
+# Local development config example
+# ========================================
+# Copy this file to application-local.yml and fill in real keys.
+# Spring loads it automatically because application.yml sets
+# spring.profiles.active: local.
+# ========================================
+
+spring:
+  # LLM agents — Spring AI's OpenAI starter pointed at Gemini's
+  # OpenAI-compatible endpoint. The same key powers Nano Banana below.
+  ai:
+    openai:
+      api-key: your-gemini-api-key
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
+      chat:
+        options:
+          model: gemini-2.5-flash
+
+# Pexels API key — get one at https://www.pexels.com/api/
+pexels:
+  api-key: your-pexels-api-key
+
+# Nano Banana (Gemini native image generation)
+# Free tier: ~500 images/day, ~10 RPM at 1024x1024
+nano-banana:
+  api-key: your-gemini-api-key
+  model: gemini-2.5-flash-image
+  aspect-ratio: "16:9"
+  image-size: "1K"
+  output-mime-type: image/png
+
+# Mermaid chart generation config (requires `mmdc` CLI: npm i -g @mermaid-js/mermaid-cli)
+mermaid:
+  cli-command: mmdc
+  background-color: transparent
+  output-format: svg
+  width: 1200
+  timeout: 30000
+
+# Iconify icon library config
+iconify:
+  api-url: https://api.iconify.design
+  search-limit: 10
+  default-height: 64
+  default-color: ""
+
+# Meme-image search config
+emoji-pack:
+  search-url: https://www.bing.com/images/async
+  suffix: funny meme
+  timeout: 10000
+
+# SVG concept diagram config
+svg-diagram:
+  default-width: 800
+  default-height: 600
+  folder: svg-diagrams
+
+# Stripe payment config (optional, test mode)
+# Get keys at https://dashboard.stripe.com/test/apikeys
+stripe:
+  api-key: sk_test_your_stripe_secret_key
+  webhook-secret: whsec_your_webhook_secret
+  success-url: http://localhost:5173/vip?success=true
+  cancel-url: http://localhost:5173/vip?cancelled=true
+
+# Cloudflare R2 config (S3-compatible)
+# Create an R2 bucket and an API token at:
+# https://dash.cloudflare.com/?to=/:account/r2
+# Account ID is in the R2 dashboard sidebar.
+# Public URL is either your custom domain or the bucket's pub-<hash>.r2.dev address.
+r2:
+  access-key-id: your-r2-access-key-id
+  secret-access-key: your-r2-secret-access-key
+  account-id: your-cloudflare-account-id
+  bucket: your-bucket-name
+  public-url: https://pub-xxx.r2.dev
