@@ -33,20 +33,16 @@ You can sign up, or use one of the seeded accounts (all share password `12345678
 ## Architecture
 
 ```mermaid
-flowchart LR
-    Start([topic + style]) --> P1
-    P1[Phase 1<br/>Title agent] --> Pick{user picks<br/>a title}
-    Pick --> P2
-    P2[Phase 2<br/>Outline agent<br/><i>streamed</i>] --> Edit{user edits<br/>or accepts}
-    Edit -->|re-prompt / refine| P2
-    Edit -->|accept| P3
+flowchart TB
+    Start([topic + style]) --> P1[Phase 1 · Title agent]
+    P1 -->|user picks a title| P2[Phase 2 · Outline agent · <i>streamed</i>]
+    P2 -->|user accepts / refines outline| P3
 
     subgraph P3 [Phase 3 · single StateGraph · streamed]
       direction LR
-      A3[Content agent] --> A4[Image agent]
-      A4 --> PAR[/Parallel images/]
-      PAR --> A5[Merger]
+      A3[Content agent] --> A4[Image agent] --> PAR[/Parallel images/] --> A5[Merger]
     end
+
     P3 --> Final([illustrated article])
 ```
 
