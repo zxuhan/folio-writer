@@ -1,0 +1,30 @@
+direction: down
+
+classes: {
+  state: {
+    shape: rectangle
+    style: {
+      fill: "#FFF7ED"
+      stroke: "#C2410C"
+      stroke-width: 2
+      font-color: "#1F2937"
+      border-radius: 6
+    }
+    height: 42
+    width: 200
+  }
+}
+
+PENDING: "PENDING" { class: state }
+TITLE_GENERATING: "TITLE_GENERATING" { class: state }
+TITLE_SELECTING: "TITLE_SELECTING" { class: state }
+OUTLINE_GENERATING: "OUTLINE_GENERATING" { class: state }
+OUTLINE_EDITING: "OUTLINE_EDITING" { class: state }
+CONTENT_GENERATING: "CONTENT_GENERATING" { class: state }
+
+PENDING -> TITLE_GENERATING: "create()"
+TITLE_GENERATING -> TITLE_SELECTING: "agent1 done"
+TITLE_SELECTING -> OUTLINE_GENERATING: "user picks title"
+OUTLINE_GENERATING -> OUTLINE_EDITING: "agent2 done"
+OUTLINE_EDITING -> OUTLINE_GENERATING: "AI refine"
+OUTLINE_EDITING -> CONTENT_GENERATING: "accept outline"

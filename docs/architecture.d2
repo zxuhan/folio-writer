@@ -1,0 +1,53 @@
+direction: down
+
+classes: {
+  phase: {
+    shape: rectangle
+    style: {
+      fill: "#FFF7ED"
+      stroke: "#C2410C"
+      stroke-width: 2
+      font-color: "#1F2937"
+      border-radius: 8
+    }
+  }
+  node: {
+    shape: rectangle
+    style: {
+      fill: "#FAFAF9"
+      stroke: "#525252"
+      stroke-width: 2
+      font-color: "#111827"
+      border-radius: 6
+    }
+  }
+  parallel: {
+    shape: rectangle
+    style: {
+      fill: "#FEF9C3"
+      stroke: "#A16207"
+      stroke-width: 2
+      font-color: "#111827"
+      border-radius: 6
+    }
+  }
+}
+
+p1: "Phase 1 — Title agent" { class: phase }
+p2: "Phase 2 — Outline agent (streamed)" { class: phase }
+
+p3: "Phase 3 — single StateGraph (streamed)" {
+  class: phase
+  grid-rows: 1
+  grid-gap: 30
+
+  content: "Content agent" { class: node }
+  image: "Image agent" { class: node }
+  parallel: "Parallel images" { class: parallel }
+  merger: "Merger" { class: node }
+
+  content -> image -> parallel -> merger
+}
+
+p1 -> p2: "user picks a title"
+p2 -> p3: "user accepts / refines outline"

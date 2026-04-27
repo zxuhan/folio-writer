@@ -1,29 +1,29 @@
-# Folio - Agentic Writing
+# Folio — Agentic Writing
 
 <p align="center">
-  <img alt="Java"             src="https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white">
-  <img alt="Spring Boot"      src="https://img.shields.io/badge/Spring%20Boot-3.5.9-6DB33F?logo=springboot&logoColor=white">
+  <img alt="Java"              src="https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white">
+  <img alt="Spring Boot"       src="https://img.shields.io/badge/Spring%20Boot-3.5.9-6DB33F?logo=springboot&logoColor=white">
   <img alt="Spring AI Alibaba" src="https://img.shields.io/badge/Spring%20AI%20Alibaba-1.1.0-FF6A00?logo=spring&logoColor=white">
-  <img alt="Gemini"           src="https://img.shields.io/badge/LLM-Gemini%202.5-4285F4?logo=google&logoColor=white">
-  <img alt="Vue"              src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white">
-  <img alt="TypeScript"       src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white">
-  <img alt="Docker"           src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white">
-  <img alt="License"          src="https://img.shields.io/badge/License-MIT-blue">
+  <img alt="Gemini"            src="https://img.shields.io/badge/LLM-Gemini%202.5-4285F4?logo=google&logoColor=white">
+  <img alt="Vue"               src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white">
+  <img alt="TypeScript"        src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white">
+  <img alt="Docker"            src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white">
+  <img alt="License"           src="https://img.shields.io/badge/License-MIT-blue">
 </p>
 
-> A multi-agent backend that turns one topic into a fully illustrated, publish-ready article. Five specialized LLM agents wired into Spring AI Alibaba's `StateGraph`, with token-level streaming, parallel image generation across six providers, an explicit phase state machine you can intervene in, and atomic VIP-quota enforcement. Spring Boot 3 on the back, Vue 3 + Ant Design Vue on the front.
+> A multi-agent backend that turns one topic into a fully illustrated, publish-ready article. Five specialized agents wired into Spring AI Alibaba's `StateGraph`, with token-level streaming, parallel image generation across six providers, an explicit phase state machine you can intervene in, and atomic VIP-quota enforcement. Spring Boot 3 on the back, Vue 3 + Ant Design Vue on the front.
 
 ## Try it live
 
-> _Live URL added once deployed_ — `<https://…>`
+**<https://folio.zxuhan.me/>**
 
-You can sign up, or use one of the seeded accounts (all share password `12345678`):
+Sign up, or use one of the pre-seeded demo accounts (all share password `12345678`):
 
 | Role  | Account | What it can do |
 |-------|---------|----------------|
 | Admin | `admin` | Everything — user management, statistics dashboard, unlimited generations |
 | VIP   | `vip`   | Unlimited generations + AI image generation + LLM-authored SVG diagrams |
-| User  | `user`  | 5 free generations, photo / icon / mermaid / meme images |
+| User  | `user`  | 5 free generations · photo / icon / mermaid / meme images |
 | Test  | `test`  | Same as `user`, kept clean for fresh demos |
 
 > Want to test the upgrade flow yourself? Sign up as a regular user, hit **VIP** in the nav, and pay with the Stripe test card `4242 4242 4242 4242` (any future expiry, any CVC). The webhook flips your role to `vip`.
@@ -32,19 +32,9 @@ You can sign up, or use one of the seeded accounts (all share password `12345678
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    Start([topic + style]) --> P1[Phase 1 · Title agent]
-    P1 -->|user picks a title| P2[Phase 2 · Outline agent · <i>streamed</i>]
-    P2 -->|user accepts / refines outline| P3
-
-    subgraph P3 [Phase 3 · single StateGraph · streamed]
-      direction LR
-      A3[Content agent] --> A4[Image agent] --> PAR[/Parallel images/] --> A5[Merger]
-    end
-
-    P3 --> Final([illustrated article])
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="Folio pipeline — three StateGraphs the user can interrupt between" width="760">
+</p>
 
 The pipeline is **three independent `StateGraph`s**, one per phase, built and compiled per request inside `ArticleAgentOrchestrator`. Phases 1 and 2 are single-node graphs; Phase 3 is the four-node sequential graph above. Splitting it this way is what lets the user **interrupt between phases** — pick from the title candidates, edit or re-prompt the outline, then commit to the body. Every phase that calls an LLM streams tokens back to the browser over SSE; image generation streams per-image events as they finish.
 
@@ -76,7 +66,21 @@ Net effect: an article never ships with broken images, only with degraded ones.
 
 ---
 
-## Real-time streaming over SSE
+## Phase state machine
+
+The article isn't a fire-and-forget async job — it's a stateful conversation the user can step through, abandon, or resume.
+
+<p align="center">
+  <img src="docs/phase-state-machine.svg" alt="Article phase state machine with explicit transitions" width="280">
+</p>
+
+`ArticlePhaseEnum.canTransitionTo(...)` validates every move in code — illegal transitions throw a `BusinessException` instead of silently corrupting state. A separate `ArticleStatusEnum` (`PENDING / PROCESSING / COMPLETED / FAILED`) tracks orthogonal lifecycle health for list views and admin dashboards.
+
+---
+
+## Other implementation highlights
+
+### Streaming over SSE
 
 Streaming an LLM response through a state graph is awkward — graph state gets serialized between nodes, and `Consumer<String>` is not serializable. The fix:
 
@@ -85,31 +89,9 @@ Streaming an LLM response through a state graph is awkward — graph state gets 
 - Agents pull it via `StreamHandlerContext.send(token)` — no graph-state coupling.
 - `SseEmitterManager` (a `ConcurrentHashMap<taskId, SseEmitter>`) handles the wire side with timeout / completion / error callbacks that auto-evict the emitter.
 
-Event types: `AGENT1_COMPLETE`, `AGENT2_STREAMING`, `AGENT2_COMPLETE`, `AGENT3_STREAMING`, `AGENT3_COMPLETE`, `AGENT4_COMPLETE`, `IMAGE_COMPLETE`, `AGENT5_COMPLETE`, `MERGE_COMPLETE`, `ERROR`.
+Event types: `AGENT1_COMPLETE`, `TITLES_GENERATED`, `AGENT2_STREAMING`, `AGENT2_COMPLETE`, `OUTLINE_GENERATED`, `AGENT3_STREAMING`, `AGENT3_COMPLETE`, `AGENT4_COMPLETE`, `IMAGE_COMPLETE`, `AGENT5_COMPLETE`, `MERGE_COMPLETE`, `ALL_COMPLETE`, `ERROR`.
 
----
-
-## Phase state machine
-
-The article isn't a fire-and-forget async job — it's a stateful conversation the user can step through, abandon, or resume.
-
-```mermaid
-stateDiagram-v2
-    [*]                --> PENDING
-    PENDING            --> TITLE_GENERATING:    create()
-    TITLE_GENERATING   --> TITLE_SELECTING:     agent1 done
-    TITLE_SELECTING    --> OUTLINE_GENERATING:  user picks title
-    OUTLINE_GENERATING --> OUTLINE_EDITING:     agent2 done
-    OUTLINE_EDITING    --> OUTLINE_GENERATING:  user asks AI to refine
-    OUTLINE_EDITING    --> CONTENT_GENERATING:  user accepts outline
-    CONTENT_GENERATING --> [*]
-```
-
-`ArticlePhaseEnum.canTransitionTo(...)` validates every move in code — illegal transitions throw a `BusinessException` instead of silently corrupting state. A separate `ArticleStatusEnum` (`PENDING / PROCESSING / COMPLETED / FAILED`) tracks orthogonal lifecycle health for list views and admin dashboards.
-
----
-
-## VIP, quota, and payments
+### VIP, quota, and payments
 
 - **Atomic quota deduction** — `UPDATE user SET quota = quota - 1 WHERE id = ? AND quota > 0` inside a `@Transactional` boundary. Affected-rows = 0 ⇒ `BusinessException("Out of quota")`. No read-then-write window, no need for a distributed lock on the hot path.
 - **VIP / admin bypass** — role check skips the deduction entirely.
@@ -131,38 +113,55 @@ stateDiagram-v2
 
 ---
 
-## Run it locally
+## Quickstart
 
-### Docker Compose (recommended)
+### Prerequisites
+
+- **Docker Desktop** (or Docker Engine + Compose v2)
+- A **Gemini API key** — free, get one at <https://aistudio.google.com/apikey>
+- A **Pexels API key** — free, get one at <https://www.pexels.com/api/>
+
+### Run with Docker (3 commands)
 
 ```bash
+git clone https://github.com/zxuhan/folio-writer.git
+cd folio-writer
 cp .env.example .env
-# fill in: GEMINI_API_KEY, PEXELS_API_KEY (required)
-#         STRIPE_API_KEY, R2_*, NANO_BANANA_API_KEY (optional)
+# open .env, set GEMINI_API_KEY and PEXELS_API_KEY (everything else has a default)
 docker compose up -d --build
 ```
 
-| Service     | URL                                  |
-|-------------|--------------------------------------|
-| Frontend    | <http://localhost>                   |
-| Backend API | <http://localhost:8123/api>          |
-| API docs    | <http://localhost:8123/api/doc.html> |
+That's it. First boot takes ~2 minutes (MySQL initialises five SQL migrations and the backend pulls Maven deps).
 
-MySQL and Redis stay on the internal Docker network — uncomment the `ports:` in `docker-compose.yml` if you want to attach a client.
+| Service     | URL                                    |
+|-------------|----------------------------------------|
+| Frontend    | <http://localhost:8080>                |
+| Backend API | <http://localhost:8123/api>            |
+| API docs    | <http://localhost:8123/api/doc.html>   |
 
-### Local dev (no Docker)
+Log in with one of the demo accounts above (`admin` / `vip` / `user` / `test`, password `12345678`).
+
+> **Optional keys.** R2 (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_PUBLIC_URL`) makes generated images persist to Cloudflare R2 — without them, image uploads silently fail and only Picsum/Pexels URLs survive. Stripe (`STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`) is only needed if you want the VIP upgrade flow.
+>
+> MySQL and Redis stay on the internal Docker network — uncomment the `ports:` block in `docker-compose.yml` if you want to attach a client.
+
+### Local dev (without Docker)
+
+You'll need **JDK 21**, **Maven 3.9+**, **Node 20+**, and a MySQL 8 + Redis running locally.
 
 ```bash
 # backend
 cp src/main/resources/application-local.yml.example src/main/resources/application-local.yml
-# fill in API keys
+# edit it: API keys, MySQL URL, Redis host
 mvn spring-boot:run
 
-# frontend (another shell)
-cd frontend && npm install && npm run dev
+# frontend (separate shell)
+cd frontend
+npm install
+npm run dev
 ```
 
-Backend on `:8123/api`, frontend on `:5173`.
+Backend listens on `:8123/api`, frontend on `:5173`.
 
 ---
 
@@ -191,27 +190,5 @@ src/main/java/com/zxuhan/template/
 └── config/                                  # CORS · JSON · Async · per-provider config
 sql/                                         # base schema + incremental migrations
 frontend/                                    # Vue 3 + Vite SPA
+docs/                                        # D2 diagram sources + rendered SVGs
 ```
-
----
-
-## Suggested GitHub repo metadata
-
-**About**
-
-> Multi-agent article generator: Spring AI Alibaba StateGraph, token streaming over SSE, parallel image generation across six providers, Vue 3 frontend.
-
-**Topics**
-
-```
-spring-boot · spring-ai · spring-ai-alibaba · multi-agent · ai-agents
-llm · gemini · stategraph · sse · server-sent-events
-ai-content-generation · ai-article-generator · vue3 · typescript
-ant-design-vue · stripe · mybatis-flex · cloudflare-r2 · docker · java21
-```
-
----
-
-## License
-
-MIT.
