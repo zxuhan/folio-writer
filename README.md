@@ -15,9 +15,9 @@
 
 ## Try it live
 
-> _Live URL added once deployed_ — `<https://…>`
+**<https://folio.zxuhan.me/>**
 
-You can sign up, or use one of the seeded accounts (all share password `12345678`):
+You can sign up, or use one of the pre-seeded demo accounts (all share password `12345678`):
 
 | Role  | Account | What it can do |
 |-------|---------|----------------|
