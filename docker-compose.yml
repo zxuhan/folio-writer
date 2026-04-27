@@ -155,7 +155,9 @@ services:
     environment:
       TZ: ${TZ:-Europe/Amsterdam}
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      # Frontend nginx is reached via Caddy on the host (which terminates HTTPS).
+      # Bind to localhost only so the public can't bypass Caddy and hit plain HTTP.
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:80"
     depends_on:
       - backend
     networks:
