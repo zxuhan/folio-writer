@@ -120,7 +120,9 @@ services:
       # JVM config
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
     ports:
-      - "${BACKEND_PORT:-8123}:8123"
+      # Bind to localhost only — the frontend nginx proxies /api/* to backend via the docker network.
+      # No reason for backend to be reachable from the public internet.
+      - "127.0.0.1:${BACKEND_PORT:-8123}:8123"
     depends_on:
       mysql:
         condition: service_healthy
