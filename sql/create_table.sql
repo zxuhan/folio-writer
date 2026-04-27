@@ -35,7 +35,8 @@ create table if not exists user
 INSERT INTO user (id, userAccount, userPassword, userName, userAvatar, userProfile, userRole) VALUES
 (1, 'admin', 'a1162ae11f397fc2d3c90af0902d9452', 'Admin', '', 'System administrator', 'admin'),
 (2, 'user', 'a1162ae11f397fc2d3c90af0902d9452', 'User', '', 'I am a regular user', 'user'),
-(3, 'test', 'a1162ae11f397fc2d3c90af0902d9452', 'Test', '', 'This is a test account', 'user');
+(3, 'test', 'a1162ae11f397fc2d3c90af0902d9452', 'Test', '', 'This is a test account', 'user'),
+(4, 'vip', 'a1162ae11f397fc2d3c90af0902d9452', 'VIP', '', 'I am a VIP demo account', 'vip');
 
 -- Article table (base fields; style/phase/titleOptions/userDescription/enabledImageMethods are added by incremental scripts)
 create table if not exists article
