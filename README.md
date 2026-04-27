@@ -30,70 +30,40 @@ You can sign up, or use one of the seeded accounts (all share password `12345678
 
 ---
 
-## How it works
+## Architecture
 
 ```mermaid
 flowchart LR
-    User([User / Browser])
-    SSE{{SSE event stream}}
+    Start([topic + style]) --> P1
+    P1[Phase 1<br/>Title agent] --> Pick{user picks<br/>a title}
+    Pick --> P2
+    P2[Phase 2<br/>Outline agent<br/><i>streamed</i>] --> Edit{user edits<br/>or accepts}
+    Edit -->|re-prompt / refine| P2
+    Edit -->|accept| P3
 
-    subgraph P1[Phase 1 · Title]
-        A1[TitleGeneratorAgent<br/>3–5 headline candidates]
+    subgraph P3 [Phase 3 · single StateGraph · streamed]
+      direction LR
+      A3[Content agent] --> A4[Image agent]
+      A4 --> PAR[/Parallel images/]
+      PAR --> A5[Merger]
     end
-    subgraph P2[Phase 2 · Outline]
-        A2[OutlineGeneratorAgent<br/>streamed outline JSON]
-    end
-    subgraph P3[Phase 3 · Content + Images · single StateGraph]
-        direction LR
-        A3[ContentGeneratorAgent<br/>streamed Markdown w/ placeholders]
-        A4[ImageAnalyzerAgent<br/>decide where + which kind]
-        PAR[/ParallelImageGenerator<br/>fan-out by provider/]
-        A5[ContentMergerAgent<br/>splice URLs into placeholders]
-        A3 --> A4 --> PAR --> A5
-    end
-
-    User -- topic + style --> A1
-    A1 -- titleOptions --> User
-    User -- pick title (+ optional notes) --> A2
-    A2 -- streamed outline --> User
-    User -- accept / AI-refine outline --> A3
-
-    A2 -.tokens.-> SSE
-    A3 -.tokens.-> SSE
-    PAR -.per-image events.-> SSE
-    A5 -.final article.-> SSE
-    SSE --> User
-
-    subgraph IMG[Image strategies · chosen per requirement]
-        direction TB
-        S1[Pexels · real photo]
-        S2[Nano Banana · Gemini image gen · VIP]
-        S3[Mermaid · flow / arch diagram]
-        S4[Iconify · vector icons]
-        S5[Emoji-pack · Bing meme scrape]
-        S6[SVG Diagram · LLM-authored SVG · VIP]
-        S7([Picsum · guaranteed fallback])
-    end
-    PAR --> IMG --> R2[(Cloudflare R2)]
-
-    classDef phase fill:#0d1117,stroke:#30363d,color:#e6edf3
-    class P1,P2,P3 phase
+    P3 --> Final([illustrated article])
 ```
 
-The pipeline is **three independent `StateGraph`s**, one per phase, built and compiled per request inside `ArticleAgentOrchestrator`. Phases 1 and 2 are single-node graphs; Phase 3 is the four-node sequential graph above. Splitting it this way is what lets the user **interrupt between phases** — pick from the title candidates, edit or re-prompt the outline, then commit to the body.
+The pipeline is **three independent `StateGraph`s**, one per phase, built and compiled per request inside `ArticleAgentOrchestrator`. Phases 1 and 2 are single-node graphs; Phase 3 is the four-node sequential graph above. Splitting it this way is what lets the user **interrupt between phases** — pick from the title candidates, edit or re-prompt the outline, then commit to the body. Every phase that calls an LLM streams tokens back to the browser over SSE; image generation streams per-image events as they finish.
 
 ---
 
 ## The agents
 
-| # | Agent | Mode | Output | Implementation notes |
-|---|---|---|---|---|
-| 1 | **`TitleGeneratorAgent`** | `ChatModel.call()` (batch) | List of `{mainTitle, subTitle}` candidates | Prompt asks for 3–5 distinct angles, ≤30 words, with numbers / emotional hooks. Style suffix (`TECH` / `EMOTIONAL` / `EDUCATIONAL` / `HUMOROUS`) appended to steer tone. JSON parsed via `GsonUtils.unwrapJson` to tolerate code-fence wrappers. |
-| 2 | **`OutlineGeneratorAgent`** | `ChatModel.stream()` | `OutlineResult` of 3–5 sections (~2000-word scope) | Tokens flow through `StreamHandlerContext` and out as `AGENT2_STREAMING:` SSE frames. Optional `userDescription` is interpolated into the prompt — that's how the user steers tone or angle without prompt-engineering. |
-| 3 | **`ContentGeneratorAgent`** | `ChatModel.stream()` | Markdown body with `[image_position_N]` placeholders | Receives the full outline as JSON to keep section boundaries; emits `AGENT3_STREAMING:` so the UI renders text as it's being written. |
-| 4 | **`ImageAnalyzerAgent`** | `ChatModel.call()` | `{contentWithPlaceholders, imageRequirements[]}` | The model decides **what kind** of image each spot wants (photo / AI-render / mermaid / icon / meme / SVG). Output is then filtered against the article's `enabledImageMethods` — any disallowed kind is rewritten to the first allowed alternative, so a non-VIP can't get VIP image kinds even if the LLM picked one. |
-| — | **`ParallelImageGenerator`** | Pure code (no LLM) | List of `ImageResult` w/ R2 URLs | Groups requirements by `imageSource`, runs one `CompletableFuture` per provider, joins with `allOf().join()`. Each successful image emits an `IMAGE_COMPLETE` SSE frame so the UI can render images progressively. Failures are isolated per image; a thread-safe `CopyOnWriteArrayList` collects whatever succeeded. |
-| 5 | **`ContentMergerAgent`** | Pure code (no LLM) | `fullContent` (final Markdown) | Defensive placeholder substitution — warns on missing slots and tolerates three different upstream result shapes (`ArticleState.ImageResult`, `ImageGenerationTool.ImageGenerationResult`, raw `Map`). |
+| # | Agent | Implementation notes | I/O |
+|---|---|---|---|
+| 1 | **`TitleGeneratorAgent`** | Prompt asks for 3–5 distinct angles, ≤30 words, with numbers / emotional hooks. Style suffix (`TECH` / `EMOTIONAL` / `EDUCATIONAL` / `HUMOROUS`) appended to steer tone. JSON parsed via `GsonUtils.unwrapJson` to tolerate code-fence wrappers. | `ChatModel.call()` → list of `{mainTitle, subTitle}` |
+| 2 | **`OutlineGeneratorAgent`** | Tokens flow through `StreamHandlerContext` and out as `AGENT2_STREAMING:` SSE frames. Optional `userDescription` is interpolated into the prompt — that's how the user steers tone or angle without prompt-engineering. | `ChatModel.stream()` → `OutlineResult` of 3–5 sections |
+| 3 | **`ContentGeneratorAgent`** | Receives the full outline as JSON to keep section boundaries; emits `AGENT3_STREAMING:` SSE frames so the UI renders text as it's being written. | `ChatModel.stream()` → Markdown body with `[image_position_N]` placeholders |
+| 4 | **`ImageAnalyzerAgent`** | The model decides **what kind** of image each spot wants (photo / AI-render / mermaid / icon / meme / SVG). Output is filtered against the article's `enabledImageMethods` — any disallowed kind is rewritten to the first allowed alternative, so a non-VIP can't get VIP image kinds even if the LLM picked one. | `ChatModel.call()` → `{contentWithPlaceholders, imageRequirements[]}` |
+| — | **`ParallelImageGenerator`** | Groups requirements by `imageSource`, runs one `CompletableFuture` per provider, joins with `allOf().join()`. Each successful image emits an `IMAGE_COMPLETE` SSE frame so the UI can render images progressively. Failures are isolated per image; a thread-safe `CopyOnWriteArrayList` collects whatever succeeded. | Pure code → `List<ImageResult>` with R2 URLs |
+| 5 | **`ContentMergerAgent`** | Defensive placeholder substitution — warns on missing slots and tolerates three different upstream result shapes (`ArticleState.ImageResult`, `ImageGenerationTool.ImageGenerationResult`, raw `Map`). | Pure code → `fullContent` (final Markdown) |
 
 Every LLM-touching agent is annotated with `@AgentExecution(...)`. An AOP aspect (`AgentExecutionAspect`) intercepts every call and writes a row into `agent_log` (taskId, prompt, duration, status, error message). The save is fired async via `AgentLogService.saveLogAsync`, so logging never sits on the hot path.
 
