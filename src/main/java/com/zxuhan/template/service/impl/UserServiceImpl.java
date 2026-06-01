@@ -102,23 +102,27 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "User not found or password incorrect");
         }
-        // 4. Store login state in session
-        request.getSession().setAttribute(USER_LOGIN_STATE, user);
+        // 4. Store login state in session.
+        // Store only the user id, not the whole User entity: serializing the full
+        // entity into the Redis session put the password hash in Redis and failed
+        // to deserialize on the next request (raw 500 from the session filter).
+        request.getSession().setAttribute(USER_LOGIN_STATE, user.getId());
         // 5. Return desensitized user info
         return this.getLoginUserVO(user);
     }
 
     @Override
     public User getLoginUser(HttpServletRequest request) {
-        // Check if user is logged in
+        // The session holds only the user id. `instanceof Long` also safely
+        // migrates any pre-existing session that still holds a serialized User
+        // object (it is treated as logged-out, prompting a fresh login).
         Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
-        User currentUser = (User) userObj;
-        if (currentUser == null || currentUser.getId() == null) {
+        Long userId = (userObj instanceof Long) ? (Long) userObj : null;
+        if (userId == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
         // Fetch current user info from database
-        long userId = currentUser.getId();
-        currentUser = this.getById(userId);
+        User currentUser = this.getById(userId);
         if (currentUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }

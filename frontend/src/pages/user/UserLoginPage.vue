@@ -64,7 +64,7 @@
             </a-form-item>
 
             <a-form-item>
-              <a-button type="primary" html-type="submit" size="large" block class="submit-btn">
+              <a-button type="primary" html-type="submit" size="large" block class="submit-btn" :loading="submitting">
                 Sign In
               </a-button>
             </a-form-item>
@@ -81,7 +81,7 @@
 </template>
 
 <script lang="ts" setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { userLogin } from '@/api/userController.ts'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { useRouter } from 'vue-router'
@@ -95,23 +95,38 @@ const formState = reactive<API.UserLoginRequest>({
 
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
+const submitting = ref(false)
 
 /**
  * Submit form
  * @param values
  */
-const handleSubmit = async (values: any) => {
-  const res = await userLogin(values)
-  // Sign-in successful: persist login state to global store
-  if (res.data.code === 0 && res.data.data) {
-    await loginUserStore.fetchLoginUser()
-    message.success('Signed in successfully')
-    router.push({
-      path: '/',
-      replace: true,
-    })
-  } else {
-    message.error('Sign in failed: ' + res.data.message)
+const handleSubmit = async (values: API.UserLoginRequest) => {
+  if (submitting.value) return
+  submitting.value = true
+  try {
+    const res = await userLogin(values)
+    // Sign-in successful: persist login state and redirect to home
+    if (res.data.code === 0 && res.data.data) {
+      // Populate the store from the login response itself, so the redirect
+      // never depends on a second request (fetchLoginUser) succeeding.
+      loginUserStore.setLoginUser(res.data.data)
+      message.success('Signed in successfully')
+      await router.push({
+        path: '/',
+        replace: true,
+      })
+    } else {
+      message.error('Sign in failed: ' + (res.data.message || 'Unknown error'))
+    }
+  } catch (e: any) {
+    // Network error / server unreachable / 5xx. Previously this rejected with no
+    // try/catch, so the click silently did nothing (no toast, no redirect).
+    message.error(
+      'Sign in failed: ' + (e?.response?.data?.message || e?.message || 'Unable to reach the server'),
+    )
+  } finally {
+    submitting.value = false
   }
 }
 </script>

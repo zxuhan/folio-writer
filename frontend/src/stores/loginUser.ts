@@ -14,9 +14,17 @@ export const useLoginUserStore = defineStore('loginUser', () => {
 
   // Fetch logged-in user information
   async function fetchLoginUser() {
-    const res = await getLoginUser()
-    if (res.data.code === 0 && res.data.data) {
-      loginUser.value = res.data.data
+    try {
+      const res = await getLoginUser()
+      if (res.data.code === 0 && res.data.data) {
+        loginUser.value = res.data.data
+      }
+    } catch (e) {
+      // Probing login state must never throw: it runs inside the router guard,
+      // and a transient backend error (e.g. the get/login 5xx) would otherwise
+      // reject the guard's await and block all navigation. Treat failure as
+      // "not signed in" and let the app render.
+      console.error('fetchLoginUser failed', e)
     }
   }
 

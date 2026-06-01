@@ -83,7 +83,7 @@
             </a-form-item>
 
             <a-form-item>
-              <a-button type="primary" html-type="submit" size="large" block class="submit-btn">
+              <a-button type="primary" html-type="submit" size="large" block class="submit-btn" :loading="submitting">
                 Sign Up
               </a-button>
             </a-form-item>
@@ -103,10 +103,11 @@
 import { useRouter } from 'vue-router'
 import { userRegister } from '@/api/userController.ts'
 import { message } from 'ant-design-vue'
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { UserOutlined, LockOutlined, SafetyOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
 
 const router = useRouter()
+const submitting = ref(false)
 
 const formState = reactive<API.UserRegisterRequest>({
   userAccount: '',
@@ -133,16 +134,26 @@ const validateCheckPassword = (rule: unknown, value: string, callback: (error?: 
  * @param values
  */
 const handleSubmit = async (values: API.UserRegisterRequest) => {
-  const res = await userRegister(values)
-  // Sign-up successful: redirect to sign-in page
-  if (res.data.code === 0) {
-    message.success('Account created successfully')
-    router.push({
-      path: '/user/login',
-      replace: true,
-    })
-  } else {
-    message.error('Sign up failed: ' + res.data.message)
+  if (submitting.value) return
+  submitting.value = true
+  try {
+    const res = await userRegister(values)
+    // Sign-up successful: redirect to sign-in page
+    if (res.data.code === 0) {
+      message.success('Account created successfully')
+      await router.push({
+        path: '/user/login',
+        replace: true,
+      })
+    } else {
+      message.error('Sign up failed: ' + (res.data.message || 'Unknown error'))
+    }
+  } catch (e: any) {
+    message.error(
+      'Sign up failed: ' + (e?.response?.data?.message || e?.message || 'Unable to reach the server'),
+    )
+  } finally {
+    submitting.value = false
   }
 }
 </script>
